@@ -8,6 +8,7 @@ def trees():
     for f in treebank.fileids():
         for t in treebank.parsed_sents(f):
             t = tree.Tree(str(t))
+            t.collapse_unary(collapsePOS=True)
             t.chomsky_normal_form()
             yield t
 
@@ -20,9 +21,10 @@ def count_tree(t, grammar):
         if isinstance(t[0], str):
             grammar[t.node][t[0]] += 1
         else:
-            grammar[t.node][t[0].node] += 1
+            count_tree(t[0], grammar)
     else:
-        raise "unexpected len: " + len(t)
+        print "unexpected len: " + len(t)
+        raise
     
 def normalize_grammar(grammar):
     normalized = {}
@@ -37,7 +39,7 @@ def train_grammar(trees):
     c = 0
     for tree in trees:
         c += 1
-        if c> 1000: break
+        if c > 100: break
         sentence_tags.add(tree.node)
         count_tree(tree, grammar)
     return (normalize_grammar(grammar), sentence_tags)

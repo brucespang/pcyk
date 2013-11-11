@@ -31,7 +31,7 @@ from nltk.corpus import treebank
 def sentences():
     for f in treebank.fileids():
         for t in treebank.sents(f):
-            yield ' '.join(t)
+            yield t
 
 def generate(phrase):
     "Generate a random sentence or phrase"
@@ -63,16 +63,16 @@ def producers(constituent, grammar):
 		results[lhs] = p
     return results
 
-def parse(s, grammar, sentence_tags):
+def parse(sentence, grammar, sentence_tags):
     "The CYK parser.  Returns the set of possible parse trees for sentence"
-    sentence = s.split()
     length = len(sentence)
-    trees = [[defaultdict(lambda: {}) for i in range(length+1)] for j in range(length)]
+    trees = [[{} for i in range(length+1)] for j in range(length)]
             
     # Fill the diagonal of the table with the parts-of-speech of the words
-    for k in range(1,length+1):
-        for producer,p in producers(sentence[k-1], grammar).iteritems():
-            trees[k-1][k][producer].append([producer, p, sentence[k-1]])
+    for k in range(length):
+        prods = producers(sentence[k], grammar)
+        for producer,p in prods.iteritems():
+            trees[k][k+1][producer] = (producer, p, sentence[k])
 
     nonproducers = defaultdict(lambda: {})
     for nt,rs in grammar.iteritems():
@@ -84,39 +84,29 @@ def parse(s, grammar, sentence_tags):
         for start in range(len(sentence)-width+1):
             end = start + width
             for span in range(start, end):
-                for nt,rs in nonproducers.iteritems():
-                    for r,p in rs.iteritems():
-                        for p1 in trees[start][span][r[0]]:
-                            for p2 in trees[span][end][r[1]]:
-                                prob = p+p1[1]+p2[1]
-                                trees[start][end][nt].append([nt, prob, p1, p2])
-                                
+                for nt,rules in nonproducers.iteritems():
+                    for r,p in rules.iteritems():
+                        if r[0] in trees[start][span] and r[1] in trees[span][end]:
+                            t1 = trees[start][span][r[0]]
+                            t2 = trees[span][end][r[1]]
+
+                            prob = p+t1[1]+t2[1]
+                            if nt not in trees[start][end] or prob > trees[start][end][nt][1]:
+                                trees[start][end][nt] = (nt, prob, t1, t2)
+                            
     for t in sentence_tags:
-        for parse in trees[0][len(sentence)][t]:
-            yield parse
+        if t in trees[0][len(sentence)]:
+            yield trees[0][len(sentence)][t]
 
 def format(tree, level=0):
-    if isinstance(tree, list):
+    if isinstance(tree, tuple):
         s = "[%s:%.5f"%(format(tree[0]), tree[1])
         for i in range(2, len(tree)):
-            s += "\n" + " "*2*level + format(tree[i], level+1)
+            s += "\n" + " "*2*(level+1) + format(tree[i], level+1)
         s += "]"
         return s
     else:
         return tree
-
-def print_language(size):
-    "Randomly generate sentences, saving and printing the unique ones"
-    language = set()
-    while len(language) < size:
-        s = generate('S')
-	language.add(flatten_tree(s))
-        
-    for s in language:
-        # parses = parse(s, grammar)
-	print s
-        # for p in range(len(parses)):
-        #     print "  " + str(p+1) + ". " + format(parses[p], 4)
 
 def test_parser():
     for _ in range(100):
@@ -133,7 +123,7 @@ if __name__ == "__main__":
     (grammar,sentence_tags) = pickle.load(open(sys.argv[1]))
 
     for s in sentences():
-        print s
+        print ' '.join(s)
         for p in parse(s, grammar, sentence_tags):
             print format(p)
 
