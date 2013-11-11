@@ -78,18 +78,15 @@ def parse(sentence, grammar, sentence_tags):
     for nt,rs in grammar.iteritems():
         for r,p in rs.iteritems():
             if isinstance(r, tuple):
-                nonproducers[nt][r] = p
+                nonproducers[r][nt] = p
 
     for width in range(2,len(sentence)+1):
         for start in range(len(sentence)-width+1):
             end = start + width
             for span in range(start, end):
-                for nt,rules in nonproducers.iteritems():
-                    for r,p in rules.iteritems():
-                        if r[0] in trees[start][span] and r[1] in trees[span][end]:
-                            t1 = trees[start][span][r[0]]
-                            t2 = trees[span][end][r[1]]
-
+                for (nt1,t1) in trees[start][span].items():
+                    for (nt2, t2) in trees[span][end].items():
+                        for (nt,p) in nonproducers[(nt1,nt2)].items():
                             prob = p+t1[1]+t2[1]
                             if nt not in trees[start][end] or prob > trees[start][end][nt][1]:
                                 trees[start][end][nt] = (nt, prob, t1, t2)
@@ -122,7 +119,7 @@ if __name__ == "__main__":
 
     (grammar,sentence_tags) = pickle.load(open(sys.argv[1]))
 
-    for s in sentences():
+    for s in list(sentences())[0:5]:
         print ' '.join(s)
         for p in parse(s, grammar, sentence_tags):
             print format(p)
