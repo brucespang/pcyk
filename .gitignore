@@ -2,3 +2,6 @@ grammar.pickle
 *\~
 \#*\#
 .\#*
+*.aux
+*.log
+*.out
