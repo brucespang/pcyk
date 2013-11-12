@@ -3,6 +3,11 @@ import pickle
 from random import choice
 from collections import defaultdict
 from nltk.corpus import treebank
+from nltk.chunk.util import ChunkScore
+from nltk.tree import Tree, ImmutableTree
+import operator
+
+SMOOTHING_PARAMETER = 2
 
 # The grammar
 # A line like:
@@ -30,8 +35,11 @@ from nltk.corpus import treebank
 
 def sentences():
     for f in treebank.fileids():
-        for t in treebank.sents(f):
-            yield t
+        for t in treebank.parsed_sents(f):
+            t.chomsky_normal_form(horzMarkov=1)
+            t.collapse_unary(collapsePOS=True)
+
+            yield (t, t.leaves())
 
 def generate(phrase):
     "Generate a random sentence or phrase"
@@ -58,7 +66,7 @@ def producers(constituent, grammar):
     "Argument is a list containing the rhs of some rule; return all possible lhs's"
     results = {}
     for (lhs,rhss) in grammar.items():
-	for rhs,p in rhss.iteritems():
+	for rhs,p in rhss.items():
 	    if rhs == constituent:
 		results[lhs] = p
     return results
@@ -71,12 +79,12 @@ def parse(sentence, grammar, sentence_tags):
     # Fill the diagonal of the table with the parts-of-speech of the words
     for k in range(length):
         prods = producers(sentence[k], grammar)
-        for producer,p in prods.iteritems():
+        for producer,p in prods.items():
             trees[k][k+1][producer] = (producer, p, sentence[k])
 
     nonproducers = defaultdict(lambda: {})
-    for nt,rs in grammar.iteritems():
-        for r,p in rs.iteritems():
+    for nt,rs in grammar.items():
+        for r,p in rs.items():
             if isinstance(r, tuple):
                 nonproducers[r][nt] = p
 
@@ -84,7 +92,7 @@ def parse(sentence, grammar, sentence_tags):
         for start in range(len(sentence)-width+1):
             end = start + width
             for span in range(start, end):
-                for (nt1,t1) in trees[start][span].items():
+                for (nt1, t1) in trees[start][span].items():
                     for (nt2, t2) in trees[span][end].items():
                         for (nt,p) in nonproducers[(nt1,nt2)].items():
                             prob = p+t1[1]+t2[1]
@@ -112,6 +120,12 @@ def test_parser():
         if s not in parse(f, grammar):
             print "[ERROR] " + format(f)
 
+def make_tree(tree):
+    if isinstance(tree, tuple) and len(tree) > 2:
+        return ImmutableTree(tree[0], [make_tree(tree[i]) for i in range(2, len(tree))])
+    else:
+        return tree
+            
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print >> sys.stderr, "Usage: %s grammar.pickle"%(sys.argv[0])
@@ -119,8 +133,17 @@ if __name__ == "__main__":
 
     (grammar,sentence_tags) = pickle.load(open(sys.argv[1]))
 
-    for s in list(sentences())[0:5]:
+    score = ChunkScore()
+    for (gold, s) in list(sentences())[0:10]:
         print ' '.join(s)
-        for p in parse(s, grammar, sentence_tags):
-            print format(p)
+        parses = list(parse(s, grammar, sentence_tags))
+        if parses:
+            guess = make_tree(max(parses, key=operator.itemgetter(1)))
+            print gold
+            print guess
+            score.score(gold, guess)
+    print 'Accuracy:', score.accuracy()
+    print 'Precision:', score.precision()
+    print 'Recall:', score.recall()
+    print 'F Measure:', score.f_measure()
 
